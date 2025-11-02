@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { X, ArrowRight, Loader2, CheckCircle, AlertCircle, ExternalLink, ChevronDown, Clock, ArrowLeftRight } from 'lucide-react';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract, usePublicClient } from 'wagmi';
+import { createPublicClient, http, formatUnits, type Address } from 'viem';
+import { sepolia } from 'viem/chains';
 import confetti from 'canvas-confetti';
 import { useBridge, type BridgeToken, type BridgeStep, CHAIN_TOKENS, SEPOLIA_CHAIN_ID, ARC_CHAIN_ID } from '../hooks/useBridge';
 
@@ -47,16 +49,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   const {
     state,
-    tokenBalance,
-    isLoadingBalance,
-    balanceError,
-    fetchTokenBalance,
     bridge,
     reset,
     isOnSepolia,
     isOnArc,
     currentChainId,
   } = useBridge();
+
+  const publicClient = usePublicClient();
 
   // Auto-detect direction based on current chain when component mounts (only if not in success state)
   useEffect(() => {
@@ -84,17 +84,235 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   const sourceChainName = activeDirection === 'sepolia-to-arc' ? 'Sepolia' : 'Arc Testnet';
   const destinationChainName = activeDirection === 'sepolia-to-arc' ? 'Arc Testnet' : 'Sepolia';
 
-  // Fetch token balance when component is active, direction changes, or token changes
-  // Only fetch if not in success state (to avoid unnecessary calls)
+  // Get token info for source chain
+  const sourceTokenInfo = CHAIN_TOKENS[sourceChainId]?.[selectedToken];
+  const destinationTokenInfo = CHAIN_TOKENS[destinationChainId]?.[selectedToken];
+
+  // ERC20 ABI for balanceOf
+  const ERC20_ABI = [
+    {
+      constant: true,
+      inputs: [{ name: '_owner', type: 'address' }],
+      name: 'balanceOf',
+      outputs: [{ name: 'balance', type: 'uint256' }],
+      type: 'function',
+    },
+  ] as const;
+
+  // Fetch balance from source chain using useReadContract (RainbowKit approach)
+  // This automatically watches the chain and updates when connected to that chain
+  const { data: sourceBalanceRaw, isLoading: isLoadingSourceBalance } = useReadContract({
+    address: (sourceTokenInfo?.contractAddress && isConnected && address && currentChainId === sourceChainId) ? sourceTokenInfo.contractAddress as Address : undefined,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { 
+      enabled: !!address && isConnected && !!sourceTokenInfo && currentChainId === sourceChainId,
+      // Refresh every 5 seconds
+      refetchInterval: 5000,
+    },
+  });
+
+  // For source chain when not connected to it, use separate publicClient
+  const sourcePublicClient = useMemo(() => {
+    if (currentChainId === sourceChainId || !sourceTokenInfo) return null; // Use wagmi when connected
+    
+    if (sourceChainId === SEPOLIA_CHAIN_ID) {
+      return createPublicClient({
+        chain: sepolia,
+        transport: http('https://ethereum-sepolia-rpc.publicnode.com', {
+          retryCount: 2,
+          timeout: 8000,
+        }),
+      });
+    } else if (sourceChainId === ARC_CHAIN_ID) {
+      return createPublicClient({
+        chain: {
+          id: ARC_CHAIN_ID,
+          name: 'Arc Testnet',
+          network: 'arc-testnet',
+          nativeCurrency: {
+            decimals: 6,
+            name: 'USDC',
+            symbol: 'USDC',
+          },
+          rpcUrls: {
+            default: { http: ['https://rpc.testnet.arc.network'] },
+            public: { http: ['https://rpc.testnet.arc.network'] },
+          },
+          blockExplorers: {
+            default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
+          },
+        },
+        transport: http('https://rpc.testnet.arc.network', {
+          retryCount: 2,
+          timeout: 8000,
+        }),
+      });
+    }
+    return null;
+  }, [sourceChainId, sourceTokenInfo, currentChainId]);
+
+  // Fetch source balance when not connected to source chain
+  const [sourceBalanceManual, setSourceBalanceManual] = useState<string>('0');
+  const [isLoadingSourceBalanceManual, setIsLoadingSourceBalanceManual] = useState(false);
+
   useEffect(() => {
-    if ((isOpen || asPage) && address && isConnected && state.step !== 'success') {
-      fetchTokenBalance(selectedToken, sourceChainId);
-     } else if (!isOpen && !asPage) {
-       // Reset state when modal closes
-       setAmount('');
-       reset();
-     }
-  }, [isOpen, asPage, address, isConnected, selectedToken, sourceChainId, state.step, fetchTokenBalance, reset]);
+    // Only fetch manually if we're not connected to the source chain
+    if (currentChainId === sourceChainId || !sourcePublicClient || !address || !sourceTokenInfo) {
+      setSourceBalanceManual('0');
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingSourceBalanceManual(true);
+
+    const fetchSourceBalance = async () => {
+      try {
+        const balance = await sourcePublicClient.readContract({
+          address: sourceTokenInfo.contractAddress as Address,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [address],
+        });
+
+        if (!isCancelled) {
+          const formatted = formatUnits(balance as bigint, sourceTokenInfo.decimals);
+          setSourceBalanceManual(formatted);
+        }
+      } catch (err) {
+        console.error('Error fetching source balance:', err);
+        if (!isCancelled) {
+          setSourceBalanceManual('0');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingSourceBalanceManual(false);
+        }
+      }
+    };
+
+    fetchSourceBalance();
+    // Refresh every 5 seconds
+    const interval = setInterval(fetchSourceBalance, 5000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [sourcePublicClient, address, sourceTokenInfo, currentChainId, sourceChainId]);
+
+  // For destination chain, we need to use a separate publicClient since we might not be connected to it
+  // Create a public client for the destination chain
+  const destinationPublicClient = useMemo(() => {
+    if (!destinationTokenInfo) return null;
+    
+    if (destinationChainId === SEPOLIA_CHAIN_ID) {
+      return createPublicClient({
+        chain: sepolia,
+        transport: http('https://ethereum-sepolia-rpc.publicnode.com', {
+          retryCount: 2,
+          timeout: 8000,
+        }),
+      });
+    } else if (destinationChainId === ARC_CHAIN_ID) {
+      return createPublicClient({
+        chain: {
+          id: ARC_CHAIN_ID,
+          name: 'Arc Testnet',
+          network: 'arc-testnet',
+          nativeCurrency: {
+            decimals: 6,
+            name: 'USDC',
+            symbol: 'USDC',
+          },
+          rpcUrls: {
+            default: { http: ['https://rpc.testnet.arc.network'] },
+            public: { http: ['https://rpc.testnet.arc.network'] },
+          },
+          blockExplorers: {
+            default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
+          },
+        },
+        transport: http('https://rpc.testnet.arc.network', {
+          retryCount: 2,
+          timeout: 8000,
+        }),
+      });
+    }
+    return null;
+  }, [destinationChainId, destinationTokenInfo]);
+
+  // Fetch destination balance using the separate publicClient
+  const [destinationBalance, setDestinationBalance] = useState<string>('0');
+  const [isLoadingDestinationBalance, setIsLoadingDestinationBalance] = useState(false);
+
+  useEffect(() => {
+    if (!destinationPublicClient || !address || !destinationTokenInfo) {
+      setDestinationBalance('0');
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingDestinationBalance(true);
+
+    const fetchDestinationBalance = async () => {
+      try {
+        const balance = await destinationPublicClient.readContract({
+          address: destinationTokenInfo.contractAddress as Address,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [address],
+        });
+
+        if (!isCancelled) {
+          const formatted = formatUnits(balance as bigint, destinationTokenInfo.decimals);
+          setDestinationBalance(formatted);
+        }
+      } catch (err) {
+        console.error('Error fetching destination balance:', err);
+        if (!isCancelled) {
+          setDestinationBalance('0');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingDestinationBalance(false);
+        }
+      }
+    };
+
+    fetchDestinationBalance();
+    // Refresh every 5 seconds
+    const interval = setInterval(fetchDestinationBalance, 5000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [destinationPublicClient, address, destinationTokenInfo]);
+
+  // Format source balance - use wagmi when connected to source chain, otherwise use manual fetch
+  const tokenBalance = useMemo(() => {
+    if (currentChainId === sourceChainId) {
+      // Use wagmi result when connected to source chain
+      if (!sourceBalanceRaw || !sourceTokenInfo) return '0';
+      return formatUnits(sourceBalanceRaw, sourceTokenInfo.decimals);
+    } else {
+      // Use manual fetch result when not connected to source chain
+      return sourceBalanceManual;
+    }
+  }, [currentChainId, sourceChainId, sourceBalanceRaw, sourceTokenInfo, sourceBalanceManual]);
+
+  const isLoadingBalance = currentChainId === sourceChainId ? isLoadingSourceBalance : isLoadingSourceBalanceManual;
+  const balanceError = '';
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen && !asPage) {
+      setAmount('');
+      reset();
+    }
+  }, [isOpen, asPage, reset]);
 
   // Timer effect during bridging - starts when isLoading becomes true
   useEffect(() => {
@@ -124,9 +342,11 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
     };
   }, [state.isLoading, bridgeStartTime]);
 
-  // Confetti effect on successful bridge
+  // Confetti effect - only trigger when receive message transaction is confirmed
+  // This means the bridge is fully complete, not just when source transaction is done
   useEffect(() => {
-    if (state.step === 'success') {
+    // Only trigger confetti when we have a receiveTxHash (receive message is confirmed)
+    if (state.step === 'success' && state.receiveTxHash) {
       // Trigger confetti animation
       const duration = 3000;
       const animationEnd = Date.now() + duration;
@@ -162,7 +382,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
       // Cleanup
       return () => clearInterval(interval);
     }
-  }, [state.step]);
+  }, [state.step, state.receiveTxHash]);
 
   const handleBridge = async () => {
     await bridge(selectedToken, amount, direction);
@@ -176,10 +396,10 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
   };
 
   const handleClose = () => {
-    if (onClose) {
     reset();
     setAmount('');
-    onClose();
+    if (onClose) {
+      onClose();
     }
   };
 
@@ -462,7 +682,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
           {/* Success */}
           {state.step === 'success' && (
-            <div className="space-y-4 text-center">
+            <div className="space-y-4 text-center relative z-10">
               <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle className="w-10 h-10 text-orange-600" />
               </div>
@@ -526,12 +746,19 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                    )}
                  </div>
               </div>
-              <button
-                onClick={handleClose}
-                className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors"
+              <motion.button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleClose();
+                }}
+                className="mt-4 w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3 bg-orange-500 text-white rounded-xl font-semibold text-base sm:text-lg hover:bg-orange-600 active:bg-orange-700 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed relative z-50"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="button"
               >
                 Close
-              </button>
+              </motion.button>
             </div>
           )}
 
@@ -549,15 +776,17 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
                 <p className="text-xs text-gray-500 mb-4">
                   Check the browser console for detailed {selectedToken} contract address information.
                 </p>
-                <button
+                <motion.button
                   onClick={() => {
                     reset();
                     setAmount('');
                   }}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3 bg-orange-500 text-white rounded-xl font-semibold text-base sm:text-lg hover:bg-orange-600 active:bg-orange-700 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-xl"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
                   Try Again
-                </button>
+                </motion.button>
               </div>
             </div>
           )}

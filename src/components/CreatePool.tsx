@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlusCircle, AlertCircle, CheckCircle2, Loader2, ArrowRight, X } from 'lucide-react';
+import { PlusCircle, AlertCircle, CheckCircle2, Loader2, ArrowRight, X, ChevronDown } from 'lucide-react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseUnits, isAddress, formatUnits, type Address } from 'viem';
 import { FACTORY_ABI, POOL_ABI, ERC20_ABI } from '../config/abis';
@@ -8,22 +8,131 @@ import { DEX_CONFIG } from '../config/dex';
 import TokenLogo from './TokenLogo';
 import { useDEX, useTokenBalance, usePoolReserves, TOKENS, type TokenSymbol, getPoolAddress } from '../hooks/useDEX';
 
+const AVAILABLE_TOKENS: TokenSymbol[] = ['RAC', 'RACD', 'RACA', 'USDC'];
+
+// Allowed wallet addresses for pool creation
+const ALLOWED_WALLETS = [
+  '0x34B5e3B8465e0A4b40b4D0819C1eB6c38E160b33',
+  '0xd67F44f3CAD319fBb0308Dfb3bF2e1B31D4a93b6',
+].map(addr => addr.toLowerCase());
+
 type Step = 'select-tokens' | 'enter-amounts';
 
 export default function CreatePool() {
   const { address, isConnected, chainId } = useAccount();
   const publicClient = usePublicClient();
   const [step, setStep] = useState<Step>('select-tokens');
-  const [tokenA, setTokenA] = useState('');
-  const [tokenB, setTokenB] = useState('');
+  const [tokenA, setTokenA] = useState(TOKENS.USDC.address); // Default to USDC
+  const [tokenB, setTokenB] = useState(TOKENS.USDC.address); // Default to USDC
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showTokenSelector, setShowTokenSelector] = useState<'A' | 'B' | null>(null);
+  const [customAddressA, setCustomAddressA] = useState('');
+  const [customAddressB, setCustomAddressB] = useState('');
+  const [tokenAInteracted, setTokenAInteracted] = useState(false);
+  const [tokenBInteracted, setTokenBInteracted] = useState(false);
+  const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
   
   const isArcTestnet = chainId === 5042002;
 
+  // Check if wallet is authorized for pool creation
+  const isAuthorized = useMemo(() => {
+    if (!address || !isConnected) return false;
+    return ALLOWED_WALLETS.includes(address.toLowerCase());
+  }, [address, isConnected]);
+
   const isValidA = tokenA && isAddress(tokenA);
   const isValidB = tokenB && isAddress(tokenB);
+
+  // Close token selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showTokenSelector) {
+        setShowTokenSelector(null);
+      }
+    };
+    if (showTokenSelector) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showTokenSelector]);
+
+  // Select token from dropdown
+  const selectToken = (tokenSymbol: TokenSymbol, type: 'A' | 'B') => {
+    // Check authorization before proceeding
+    if (isConnected && !isAuthorized) {
+      setShowUnauthorizedModal(true);
+      setShowTokenSelector(null);
+      return;
+    }
+
+    const tokenAddress = TOKENS[tokenSymbol].address;
+    if (type === 'A') {
+      setTokenA(tokenAddress);
+      setCustomAddressA('');
+      setTokenAInteracted(true);
+    } else {
+      setTokenB(tokenAddress);
+      setCustomAddressB('');
+      setTokenBInteracted(true);
+    }
+    setShowTokenSelector(null);
+  };
+
+  // Fetch balances for all tokens when dropdown is open
+  const { data: balanceRAC } = useReadContract({
+    address: TOKENS.RAC.address as Address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isConnected && isArcTestnet },
+  });
+
+  const { data: balanceRACD } = useReadContract({
+    address: TOKENS.RACD.address as Address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isConnected && isArcTestnet },
+  });
+
+  const { data: balanceRACA } = useReadContract({
+    address: TOKENS.RACA.address as Address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isConnected && isArcTestnet },
+  });
+
+  const { data: balanceUSDC } = useReadContract({
+    address: TOKENS.USDC.address as Address,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address && isConnected && isArcTestnet },
+  });
+
+  // Format balances
+  const getTokenBalance = (tokenSymbol: TokenSymbol): string => {
+    let balance: bigint | undefined;
+    switch (tokenSymbol) {
+      case 'RAC':
+        balance = balanceRAC;
+        break;
+      case 'RACD':
+        balance = balanceRACD;
+        break;
+      case 'RACA':
+        balance = balanceRACA;
+        break;
+      case 'USDC':
+        balance = balanceUSDC;
+        break;
+    }
+    if (!balance) return '0';
+    return formatUnits(balance, TOKENS[tokenSymbol].decimals);
+  };
 
   // Get token info for display
   const { data: symbolA } = useReadContract({
@@ -171,6 +280,12 @@ export default function CreatePool() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleContinueToAmounts = () => {
+    // Check authorization before proceeding
+    if (isConnected && !isAuthorized) {
+      setShowUnauthorizedModal(true);
+      return;
+    }
+    
     setError(null);
     
     if (!isAddress(tokenA) || !isAddress(tokenB)) {
@@ -202,6 +317,12 @@ export default function CreatePool() {
   };
 
   const handleCreatePool = async () => {
+    // Check authorization before proceeding
+    if (isConnected && !isAuthorized) {
+      setShowUnauthorizedModal(true);
+      return;
+    }
+
     setError(null);
     
     if (!isAddress(tokenA) || !isAddress(tokenB)) {
@@ -645,24 +766,111 @@ export default function CreatePool() {
             exit={{ opacity: 0, x: 20 }}
             className="space-y-6"
           >
+            {/* Info Note */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-800">
+                  <span className="font-semibold">Note:</span> Only USDC pair pools are allowed. One of the tokens must be USDC.
+                </p>
+              </div>
+            </div>
+
             {/* Token A and B on same line */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Token A */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Token A Address
+                  Token A
                 </label>
-                <input
-                  type="text"
-                  value={tokenA}
-                  onChange={(e) => {
-                    setTokenA(e.target.value);
-                    setError(null);
-                  }}
-                  placeholder="0x..."
-                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                />
-              {isValidA && (symbolA || nameA) && (
+                <div className="space-y-2">
+                  {/* Token Selector Button */}
+                  <div className="relative">
+                    <motion.button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowTokenSelector(showTokenSelector === 'A' ? null : 'A');
+                      }}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 transition-all"
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {tokenA && isValidA && (
+                          <TokenLogo token={symbolA as string || '?'} size={24} className="flex-shrink-0" />
+                        )}
+                        <span className="text-sm font-medium text-gray-900">
+                          {tokenA && isValidA && symbolA ? symbolA : 'Select token'}
+                        </span>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-gray-600" />
+                    </motion.button>
+                    <AnimatePresence>
+                      {showTokenSelector === 'A' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-50 max-h-[300px] overflow-y-auto scrollbar-hide"
+                        >
+                          {AVAILABLE_TOKENS.map((tokenSymbol) => {
+                            const balance = getTokenBalance(tokenSymbol);
+                            return (
+                              <motion.button
+                                key={tokenSymbol}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  selectToken(tokenSymbol, 'A');
+                                }}
+                                whileHover={{ scale: 1.02, x: 4 }}
+                                whileTap={{ scale: 0.98 }}
+                                className={`w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl ${
+                                  tokenA === TOKENS[tokenSymbol].address ? 'bg-orange-50' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <TokenLogo token={tokenSymbol} size={32} className="flex-shrink-0" />
+                                  <span className="font-semibold text-gray-900">{tokenSymbol}</span>
+                                </div>
+                                {address && isConnected && (
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                                    {balance && !isNaN(parseFloat(balance)) ? parseFloat(balance).toFixed(4) : '0.0000'}
+                                  </span>
+                                )}
+                              </motion.button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  
+                  {/* Custom Address Input */}
+                  <input
+                    type="text"
+                    value={customAddressA}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCustomAddressA(value);
+                      if (isAddress(value)) {
+                        // Check authorization before setting token
+                        if (isConnected && !isAuthorized) {
+                          setShowUnauthorizedModal(true);
+                          return;
+                        }
+                        setTokenA(value);
+                        setTokenAInteracted(true);
+                        setError(null);
+                      }
+                    }}
+                    placeholder="Or paste custom address (0x...)"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+                {isValidA && tokenAInteracted && (symbolA || nameA) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -689,19 +897,97 @@ export default function CreatePool() {
               {/* Token B */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Token B Address
+                  Token B
                 </label>
-                <input
-                  type="text"
-                  value={tokenB}
-                  onChange={(e) => {
-                    setTokenB(e.target.value);
-                    setError(null);
-                  }}
-                  placeholder="0x..."
-                  className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                />
-              {isValidB && (symbolB || nameB) && (
+                <div className="space-y-2">
+                  {/* Token Selector Button */}
+                  <div className="relative">
+                    <motion.button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowTokenSelector(showTokenSelector === 'B' ? null : 'B');
+                      }}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 transition-all"
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {tokenB && isValidB && (
+                          <TokenLogo token={symbolB as string || 'USDC'} size={24} className="flex-shrink-0" />
+                        )}
+                        <span className="text-sm font-medium text-gray-900">
+                          {tokenB && isValidB && symbolB ? symbolB : 'USDC'}
+                        </span>
+                      </div>
+                      <ChevronDown className="w-4 h-4 text-gray-600" />
+                    </motion.button>
+                    <AnimatePresence>
+                      {showTokenSelector === 'B' && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-2xl z-50 max-h-[300px] overflow-y-auto scrollbar-hide"
+                        >
+                          {/* Show all tokens for Token B */}
+                          {AVAILABLE_TOKENS.map((tokenSymbol) => {
+                            const balance = getTokenBalance(tokenSymbol);
+                            return (
+                              <motion.button
+                                key={tokenSymbol}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  selectToken(tokenSymbol, 'B');
+                                }}
+                                whileHover={{ scale: 1.02, x: 4 }}
+                                whileTap={{ scale: 0.98 }}
+                                className={`w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-gray-50 first:rounded-t-xl last:rounded-b-xl ${
+                                  tokenB === TOKENS[tokenSymbol].address ? 'bg-orange-50' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <TokenLogo token={tokenSymbol} size={32} className="flex-shrink-0" />
+                                  <span className="font-semibold text-gray-900">{tokenSymbol}</span>
+                                </div>
+                                {address && isConnected && (
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">
+                                    {balance && !isNaN(parseFloat(balance)) ? parseFloat(balance).toFixed(4) : '0.0000'}
+                                  </span>
+                                )}
+                              </motion.button>
+                            );
+                          })}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  
+                  {/* Custom Address Input for Token B */}
+                  <input
+                    type="text"
+                    value={customAddressB}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCustomAddressB(value);
+                      if (isAddress(value)) {
+                        // Check authorization before setting token
+                        if (isConnected && !isAuthorized) {
+                          setShowUnauthorizedModal(true);
+                          return;
+                        }
+                        setTokenB(value);
+                        setTokenBInteracted(true);
+                        setError(null);
+                      }
+                    }}
+                    placeholder="Or paste custom address (0x...)"
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+                {isValidB && tokenBInteracted && (symbolB || nameB) && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1213,6 +1499,80 @@ export default function CreatePool() {
                       </div>
                     </motion.div>
                   )}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Unauthorized Wallet Modal */}
+        <AnimatePresence>
+          {showUnauthorizedModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+              onClick={() => setShowUnauthorizedModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative"
+                style={{
+                  boxShadow: `
+                    0 0 30px rgba(251, 146, 60, 0.25),
+                    0 0 60px rgba(251, 146, 60, 0.15),
+                    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+                    0 4px 6px -2px rgba(0, 0, 0, 0.05),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.9)
+                  `
+                }}
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                      <AlertCircle className="w-6 h-6 text-orange-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">Pool Creation Restricted</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowUnauthorizedModal(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="p-4 bg-orange-50 rounded-xl border border-orange-200">
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      Pool creation is currently restricted to admin wallets to avoid unnecessary pools.
+                    </p>
+                  </div>
+
+                  <p className="text-sm text-gray-600 text-center">
+                    If you need to create a pool, please contact the owner on{' '}
+                    <a
+                      href="https://x.com/realchriswilder"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-orange-600 hover:text-orange-700 font-semibold underline"
+                    >
+                      X
+                    </a>
+                  </p>
+
+                  <motion.button
+                    onClick={() => setShowUnauthorizedModal(false)}
+                    className="w-full py-3 rounded-xl font-semibold text-base bg-orange-500 text-white hover:bg-orange-600 transition-all"
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    Understood
+                  </motion.button>
                 </div>
               </motion.div>
             </motion.div>

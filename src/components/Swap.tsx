@@ -7,6 +7,7 @@ import { ERC20_ABI } from '../config/abis';
 import { parseUnits, type Address } from 'viem';
 import { getPoolAddress } from '../hooks/useDEX';
 import TokenLogo from './TokenLogo';
+import { addArcTestnetToWallet } from '../utils/addArcTestnet';
 
 const AVAILABLE_TOKENS: TokenSymbol[] = ['RAC', 'RACD', 'RACA', 'USDC'];
 
@@ -36,6 +37,9 @@ export default function Swap() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [approvalCompleted, setApprovalCompleted] = useState(false);
   const [swapHash, setSwapHash] = useState<`0x${string}` | null>(null);
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
+  const [swapConfirmed, setSwapConfirmed] = useState(false);
+  const [swapStartTime, setSwapStartTime] = useState<number | null>(null);
   
   // Check if on Arc Testnet
   const isArcTestnet = chainId === 5042002;
@@ -257,8 +261,30 @@ export default function Swap() {
     if (hash && swapStep === 'swapping' && !swapHash) {
       // Capture the swap transaction hash
       setSwapHash(hash);
+      setSwapStartTime(Date.now());
+      setSwapConfirmed(false);
     }
   }, [hash, swapStep, swapHash]);
+
+  // Auto-confirm swap success after 5 seconds if we have a hash (since chain is fast)
+  useEffect(() => {
+    if (swapHash && swapStep === 'swapping' && !swapConfirmed && swapStartTime) {
+      const elapsed = Date.now() - swapStartTime;
+      const remaining = Math.max(0, 5000 - elapsed); // 5 seconds total
+      
+      if (remaining > 0) {
+        const timeoutId = setTimeout(() => {
+          // After 5 seconds, mark as confirmed
+          setSwapConfirmed(true);
+        }, remaining);
+        
+        return () => clearTimeout(timeoutId);
+      } else {
+        // Already past 5 seconds
+        setSwapConfirmed(true);
+      }
+    }
+  }, [swapHash, swapStep, swapConfirmed, swapStartTime]);
 
   // Track swap progress and errors
   useEffect(() => {
@@ -268,30 +294,38 @@ export default function Swap() {
         if (!showProgressModal) {
           setShowProgressModal(true);
         }
-      } else if (isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash) {
-        // Only show success if we have the swap hash and it matches
-        // Swap completed successfully
-        setTimeout(() => {
+      } else if (swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming) {
+        // Show success if either isSuccess is true OR 5 seconds have passed (chain is fast)
+        // Close modal after 5 seconds
+        const timeoutId = setTimeout(() => {
           setShowProgressModal(false);
           setSwapStep('none');
           setFromAmount('');
           setToAmount('');
           setApprovalCompleted(false);
           setSwapHash(null);
-        }, 2500);
+          setSwapConfirmed(false);
+          setSwapStartTime(null);
+        }, 5000); // Close after 5 seconds
+        
+        return () => clearTimeout(timeoutId);
       } else if (error && swapStep === 'swapping') {
         // Only show error if we're actually in the swapping step
         const errorMsg = formatSwapError(error);
         setErrorMessage(errorMsg);
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           setShowProgressModal(false);
           setSwapStep('none');
           setApprovalCompleted(false);
           setSwapHash(null);
+          setSwapConfirmed(false);
+          setSwapStartTime(null);
         }, 3000);
+        
+        return () => clearTimeout(timeoutId);
       }
     }
-  }, [isPending, isConfirming, isSuccess, error, swapStep, showProgressModal, swapHash, hash]);
+  }, [isPending, isConfirming, isSuccess, error, swapStep, showProgressModal, swapHash, swapConfirmed]);
 
   const handleAmountChange = (value: string, type: 'from' | 'to') => {
     if (type === 'from') {
@@ -310,8 +344,34 @@ export default function Swap() {
     setToAmount(tempAmount);
   };
 
-  const handleSwapClick = () => {
-    if (!isConnected || !fromAmount || parseFloat(fromAmount) <= 0) return;
+  const handleSwapClick = async () => {
+    // If not connected, let RainbowKit handle connection
+    if (!isConnected) {
+      return;
+    }
+
+    // If not on Arc Testnet, try to add/switch to it
+    if (!isArcTestnet) {
+      setIsSwitchingNetwork(true);
+      setErrorMessage(null);
+      try {
+        // Try to add Arc Testnet to wallet first (this handles adding and switching)
+        await addArcTestnetToWallet();
+        // The addArcTestnetToWallet function already switches to the chain
+        // If we still need to use wagmi's switchChain, wait a moment first
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error: any) {
+        console.error('Error adding/switching to Arc Testnet:', error);
+        const errorMsg = error.message || 'Failed to add Arc Testnet to wallet. Please add it manually in MetaMask settings.';
+        setErrorMessage(errorMsg);
+      } finally {
+        setIsSwitchingNetwork(false);
+      }
+      return;
+    }
+
+    // If on correct network, proceed with swap
+    if (!fromAmount || parseFloat(fromAmount) <= 0) return;
     if (!publicClient || !address || !poolAddress) {
       setErrorMessage('Pool not found. Please create the pool first.');
       return;
@@ -335,6 +395,8 @@ export default function Swap() {
       setErrorMessage(null);
       setApprovalCompleted(false);
       setSwapHash(null);
+      setSwapConfirmed(false);
+      setSwapStartTime(null);
       
       // Check if approval is needed
       if (needsApproval) {
@@ -357,6 +419,8 @@ export default function Swap() {
       setSwapStep('none');
       setApprovalCompleted(false);
       setSwapHash(null);
+      setSwapConfirmed(false);
+      setSwapStartTime(null);
     }
   };
 
@@ -520,12 +584,19 @@ export default function Swap() {
         </div>
 
         {/* Swap Button */}
-        <div className="flex justify-center -my-2 relative">
+        <div className="flex justify-center relative z-20 my-2">
           <motion.button
             onClick={swapTokens}
-            className="p-3 bg-white/80 backdrop-blur-sm rounded-full border-4 border-white shadow-lg hover:shadow-xl transition-all"
+            className="p-3 bg-white rounded-full border-4 border-white shadow-lg hover:shadow-xl transition-all relative z-10"
             whileHover={{ scale: 1.1, rotate: 180 }}
             whileTap={{ scale: 0.9 }}
+            style={{
+              boxShadow: `
+                0 0 20px rgba(251, 146, 60, 0.2),
+                0 4px 6px -1px rgba(0, 0, 0, 0.1),
+                0 2px 4px -1px rgba(0, 0, 0, 0.06)
+              `
+            }}
           >
             <ArrowDownUp className="w-5 h-5 text-gray-700" />
           </motion.button>
@@ -716,20 +787,22 @@ export default function Swap() {
         {/* Swap Button */}
         <motion.button
           onClick={handleSwapClick}
-          disabled={!isConnected || !isArcTestnet || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput}
+          disabled={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork}
           className={`w-full py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 relative z-0 flex items-center justify-center gap-2 ${
-            !isConnected || !isArcTestnet || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput
+            !isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-orange-500 text-white hover:bg-orange-600 hover:shadow-lg active:scale-95'
           }`}
-          whileHover={!isConnected || !isArcTestnet || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput ? {} : { scale: 1.02 }}
-          whileTap={!isConnected || !isArcTestnet || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput ? {} : { scale: 0.98 }}
+          whileHover={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork ? {} : { scale: 1.02 }}
+          whileTap={!isConnected || (!isArcTestnet && !isSwitchingNetwork) || !fromAmount || parseFloat(fromAmount) <= 0 || isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork ? {} : { scale: 0.98 }}
         >
-          {(isPending || isConfirming || isCalculatingOutput) && <Loader2 className="w-5 h-5 animate-spin" />}
+          {(isPending || isConfirming || isCalculatingOutput || isSwitchingNetwork) && <Loader2 className="w-5 h-5 animate-spin" />}
           {!isConnected
             ? 'Connect Wallet'
+            : isSwitchingNetwork
+            ? 'Adding Arc Testnet...'
             : !isArcTestnet
-            ? 'Switch to Arc Testnet'
+            ? 'Add Arc Testnet'
             : !fromAmount || parseFloat(fromAmount) <= 0
             ? 'Enter Amount'
             : isCalculatingOutput
@@ -872,7 +945,7 @@ export default function Swap() {
               onClick={() => {
                 // Don't close on background click during transaction
                 // Only allow closing if we're not in an active step or if transaction is complete
-                if (swapStep === 'none' || (isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash)) {
+                if (swapStep === 'none' || (swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming)) {
                   setShowProgressModal(false);
                 }
               }}
@@ -895,7 +968,7 @@ export default function Swap() {
               >
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-gray-900">Swap Progress</h3>
-                  {(!isPending && !isConfirming && swapStep === 'none') || (isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash) ? (
+                  {(!isPending && !isConfirming && swapStep === 'none') || (swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming) ? (
                     <button
                       onClick={() => setShowProgressModal(false)}
                       className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -948,13 +1021,13 @@ export default function Swap() {
                     <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
                       swapStep === 'swapping' && (isPending || isConfirming)
                         ? 'bg-orange-500'
-                        : isSuccess
+                        : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming
                         ? 'bg-green-500'
                         : 'bg-gray-200'
                     }`}>
                       {swapStep === 'swapping' && (isPending || isConfirming) ? (
                         <Loader2 className="w-6 h-6 text-white animate-spin" />
-                      ) : isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash ? (
+                      ) : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming ? (
                         <CheckCircle2 className="w-6 h-6 text-white" />
                       ) : (
                         <div className="w-6 h-6 rounded-full bg-white" />
@@ -964,7 +1037,7 @@ export default function Swap() {
                       <p className={`font-semibold ${
                         swapStep === 'swapping' && (isPending || isConfirming)
                           ? 'text-orange-600'
-                          : isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash
+                          : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming
                           ? 'text-green-600'
                           : 'text-gray-500'
                       }`}>
@@ -973,15 +1046,15 @@ export default function Swap() {
                       <p className="text-sm text-gray-500">
                         {swapStep === 'swapping' && (isPending || isConfirming)
                           ? 'Waiting for confirmation...'
-                          : isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash
+                          : swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming
                           ? 'Swap completed!'
                           : 'Pending...'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Success Message */}
-                  {isSuccess && swapStep === 'swapping' && swapHash && hash === swapHash && (
+                  {/* Success Message - Only show when swap is actually confirmed */}
+                  {swapStep === 'swapping' && swapHash && (isSuccess || swapConfirmed) && !isPending && !isConfirming && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}

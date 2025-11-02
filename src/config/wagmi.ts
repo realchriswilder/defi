@@ -1,23 +1,25 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { sepolia } from 'viem/chains';
 
-// Get Alchemy API key from environment
-const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || 'od-Qy7D8pDM1cvXoJOBR5KIcDluzHp90';
-const ALCHEMY_RPC_URL = `https://arc-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+// Use official Arc Testnet RPC endpoint
+const ARC_RPC_URL = 'https://rpc.testnet.arc.network';
 
 // Arc Testnet configuration
+// Note: MetaMask validation requires 18 decimals for nativeCurrency
+// Even though Arc Testnet uses USDC with 6 decimals, we use 18 here to satisfy MetaMask
+// Actual transactions will still use the correct 6 decimals for USDC
 const arcTestnet = {
   id: 5042002,
   name: 'Arc Testnet',
   network: 'arc-testnet',
   nativeCurrency: {
-    decimals: 6, // USDC has 6 decimals (Arc uses USDC as gas fee)
+    decimals: 18, // MetaMask requires 18, though Arc uses USDC with 6 decimals
     name: 'USDC',
     symbol: 'USDC',
   },
   rpcUrls: {
-    default: { http: [ALCHEMY_RPC_URL] },
-    public: { http: [ALCHEMY_RPC_URL] },
+    default: { http: [ARC_RPC_URL] },
+    public: { http: [ARC_RPC_URL] },
   },
   blockExplorers: {
     default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
