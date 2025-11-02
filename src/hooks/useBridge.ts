@@ -1,10 +1,12 @@
 import { useState, useCallback } from 'react';
-import { useAccount, useSwitchChain } from 'wagmi';
+import { useAccount, useSwitchChain, useWalletClient } from 'wagmi';
+import { getAccount } from '@wagmi/core';
 import { createAdapterFromProvider } from '@circle-fin/adapter-viem-v2';
 import { BridgeKit } from '@circle-fin/bridge-kit';
 import { type EIP1193Provider } from 'viem';
 import { createPublicClient, http, formatUnits } from 'viem';
 import { sepolia } from 'viem/chains';
+import { config as wagmiConfig } from '../config/wagmi';
 
 export type BridgeToken = 'USDC';
 export type BridgeStep = 
@@ -71,6 +73,7 @@ const ARC_RPC_URLS = [
 export function useBridge() {
   const { address, isConnected, chainId } = useAccount();
   const { switchChain } = useSwitchChain();
+  const { data: walletClient } = useWalletClient();
   
   const [state, setState] = useState<BridgeState>({
     step: 'idle',
@@ -249,14 +252,80 @@ export function useBridge() {
     try {
       setState(prev => ({ ...prev, step: 'idle', error: null, isLoading: true }));
 
-      // Get the provider from window.ethereum (MetaMask)
-      if (!window.ethereum) {
-        throw new Error('MetaMask not found. Please install MetaMask.');
+      // Get the provider from wagmi (works on both desktop and mobile)
+      // This approach works with RainbowKit on mobile Chrome
+      let provider: EIP1193Provider | undefined;
+      
+      // Try multiple methods to get the provider (for mobile compatibility)
+      // Method 1: Get from active connector via getAccount (most reliable for RainbowKit on mobile)
+      if (isConnected && address) {
+        try {
+          const account = getAccount(wagmiConfig);
+          const connector = account.connector;
+          
+          if (connector) {
+            // Try getProvider method (async)
+            if (typeof connector.getProvider === 'function') {
+              try {
+                const connectorProvider = await connector.getProvider();
+                if (connectorProvider) {
+                  provider = connectorProvider as EIP1193Provider;
+                }
+              } catch (err) {
+                console.warn('getProvider() failed, trying provider property:', err);
+              }
+            }
+            
+            // Try provider property directly
+            if (!provider && (connector as any).provider) {
+              provider = (connector as any).provider as EIP1193Provider;
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to get provider from connector:', err);
+        }
+      }
+      
+      // Method 2: Get from walletClient transport (wagmi v2)
+      if (!provider && walletClient) {
+        try {
+          // Try to access provider through walletClient's transport
+          const transport = (walletClient as any).transport;
+          if (transport) {
+            // For HTTP transport, try to get provider from value
+            const transportValue = transport.value || transport;
+            if (transportValue?.provider) {
+              provider = transportValue.provider as EIP1193Provider;
+            }
+          }
+          // Some walletClients have provider directly
+          if (!provider && (walletClient as any).provider) {
+            provider = (walletClient as any).provider as EIP1193Provider;
+          }
+        } catch (err) {
+          console.warn('Failed to get provider from walletClient:', err);
+        }
+      }
+      
+      // Method 3: Try common mobile wallet provider locations
+      if (!provider && typeof window !== 'undefined') {
+        // Check for window.ethereum (MetaMask)
+        if ((window as any).ethereum) {
+          provider = (window as any).ethereum as EIP1193Provider;
+        }
+        // Check for other common mobile wallet providers
+        else if ((window as any).web3?.currentProvider) {
+          provider = (window as any).web3.currentProvider as EIP1193Provider;
+        }
+      }
+      
+      if (!provider) {
+        throw new Error('Wallet not found. Please connect your wallet first.');
       }
 
-      // Create adapter from browser wallet provider
+      // Create adapter from wallet provider
       const adapter = await createAdapterFromProvider({
-        provider: window.ethereum as EIP1193Provider,
+        provider: provider,
       });
 
       // Initialize Bridge Kit
