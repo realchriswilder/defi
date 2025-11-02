@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "npm start"
+
+[staticAssets]
+# Explicitly mark as NO static assets - this is a background worker, not a web service

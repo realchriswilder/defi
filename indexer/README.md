@@ -4,13 +4,23 @@ This indexer listens to blockchain events from the DEX Factory and pools, then s
 
 ## Railway Setup
 
-**IMPORTANT**: When setting up on Railway:
-1. Set the **Root Directory** to `/indexer` in Railway service settings
-2. The `railway.json` is already configured correctly
-3. Add these environment variables in Railway:
-   - `WSS_URL` - WebSocket URL (default: `wss://rpc.testnet.arc.network`)
-   - `SUPABASE_URL` - Your Supabase project URL
-   - `SUPABASE_ANON_KEY` - Your Supabase anon key
+**CRITICAL SETUP STEPS**:
+
+1. **Create a NEW service** in Railway (don't reuse the frontend service)
+2. **Connect to the same GitHub repo**
+3. **Set Root Directory** to `/indexer` in Railway service Settings → Source
+4. **Set Service Type** to "Worker" (NOT "Web Service") - this is critical!
+5. **Add Environment Variables** in Railway Variables tab:
+   - `WSS_URL` = `wss://rpc.testnet.arc.network` (or one of the alternatives)
+   - `SUPABASE_URL` = Your Supabase project URL
+   - `SUPABASE_ANON_KEY` = Your Supabase anon key
+
+## Why Railway Shows Caddy Instead of Indexer
+
+If you see Caddy web server logs, it means:
+- Railway detected this as a "Web Service" instead of a "Worker"
+- You need to explicitly set the service type to "Worker" in Railway settings
+- OR you're looking at the wrong service's logs (check you're viewing the indexer service)
 
 ## Local Development
 
@@ -35,23 +45,25 @@ The indexer will:
 - Store raw swap events in Supabase
 - Update pool reserves from on-chain data (ERC20 balances)
 
-## Troubleshooting Railway
+## Expected Railway Logs
 
-If the indexer isn't starting on Railway:
+When the indexer starts correctly, you should see:
 
-1. **Check Root Directory**: Make sure Railway service root is set to `/indexer`
-2. **Check Environment Variables**: All 3 environment variables must be set
-3. **Check Logs**: Look for "Initializing indexer..." and configuration status messages
-4. **Verify Start Command**: Should be `node index.js` (not `npm start`)
-
-You should see logs like:
 ```
+🚀 Initializing DEX Indexer...
+📍 Working directory: /app
+📦 Node version: v20.x.x
+
 === Indexer Configuration ===
 WSS_URL: SET
 SUPABASE_URL: SET (https://...)
 SUPABASE_KEY: SET (eyJ...)
 Supabase client: ✓ INITIALIZED
 ============================
-Initializing indexer...
+
 Starting indexer polling loop...
+Found X pools
+...
 ```
+
+**If you see Caddy logs instead**, Railway is treating this as a web service. Go to Service Settings → General → and change the service type to "Worker".

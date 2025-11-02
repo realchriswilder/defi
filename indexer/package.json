@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
-    "dev": "node index.js"
+    "dev": "node index.js",
+    "worker": "node index.js"
   },
   "keywords": ["dex", "indexer", "blockchain", "supabase"],
   "author": "",
