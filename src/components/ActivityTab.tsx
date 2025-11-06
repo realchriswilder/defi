@@ -38,10 +38,9 @@ export default function ActivityTab() {
     const fetchSwapEvents = async () => {
       setIsLoading(true);
       try {
-        // Fetch recent swap events (last 7 days, limit 50)
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        // Fetch all swap events (no date filter, limit 100 to show more history)
         const response = await fetch(
-          `${supabaseUrl}/rest/v1/swap_events?timestamp=gte.${sevenDaysAgo}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.desc&limit=50`,
+          `${supabaseUrl}/rest/v1/swap_events?select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.desc&limit=100`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -58,8 +57,8 @@ export default function ActivityTab() {
           if (publicClient && address) {
             const userSwaps: SwapEvent[] = [];
             
-            // Limit to checking first 20 transactions for performance
-            const eventsToCheck = events.slice(0, 20);
+            // Check all events (up to 100) to show complete history
+            const eventsToCheck = events;
             
             for (const event of eventsToCheck) {
               try {
@@ -80,7 +79,7 @@ export default function ActivityTab() {
             setSwapEvents(userSwaps);
           } else {
             // If no public client, show all swaps (fallback)
-            setSwapEvents(events.slice(0, 20));
+            setSwapEvents(events);
           }
         }
       } catch (error) {
