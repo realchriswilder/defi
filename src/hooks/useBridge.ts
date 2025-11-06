@@ -523,9 +523,24 @@ export function useBridge() {
 
       console.log('Extracted transaction hashes:', { sourceTxHash, receiveTxHash });
 
+      // Only mark as success if we have at least the receive transaction hash
+      // The receiveTxHash confirms the bridge is fully complete on the destination chain
+      // If we don't have receiveTxHash, the transaction was likely cancelled or failed
+      if (!receiveTxHash) {
+        console.warn('Bridge resolved but no receiveTxHash found. This might indicate cancellation or partial completion.');
+        
+        // Check if this looks like a user cancellation (no sourceTxHash either)
+        if (!sourceTxHash) {
+          throw new Error('Transaction was cancelled. No tokens were bridged.');
+        }
+        
+        // If we have sourceTxHash but not receiveTxHash, transaction was cancelled during receive step
+        throw new Error('Transaction was cancelled during the receive step. Your tokens may still be in transit. Please check your transactions.');
+      }
+
       // Bridge Kit's bridge() method only resolves after ALL transactions complete
       // This includes: approval, transfer, chain switch, and receive message
-      // So if we reach here, the bridge is complete
+      // So if we reach here with receiveTxHash, the bridge is complete
       setState({
         step: 'success',
         error: null,
@@ -539,9 +554,25 @@ export function useBridge() {
     } catch (err: any) {
       console.error('Bridge error:', err);
       
+      // Check for user rejection/cancellation errors
+      const errorStr = err.message || err.toString() || '';
+      const isUserRejection = 
+        errorStr.includes('User rejected') || 
+        errorStr.includes('User denied') ||
+        errorStr.includes('rejected the request') ||
+        errorStr.includes('User rejected the request') ||
+        errorStr.includes('user rejected') ||
+        errorStr.includes('user denied') ||
+        errorStr.includes('cancelled') ||
+        errorStr.includes('ACTION_REJECTED') ||
+        errorStr.includes('4001') || // MetaMask error code for user rejection
+        errorStr.includes('Transaction was cancelled'); // Our own cancellation message
+      
       let errorMessage = err.message || 'Bridge transaction failed';
       
-      if (err.message?.includes('Insufficient funds')) {
+      if (isUserRejection) {
+        errorMessage = 'Transaction was cancelled. No tokens were bridged.';
+      } else if (err.message?.includes('Insufficient funds')) {
         const tokenInfo = SEPOLIA_TOKENS[token];
         errorMessage = `❌ Wrong ${token} Contract Address!\n\n` +
           `Bridge Kit requires ${token} at:\n` +
@@ -559,6 +590,8 @@ export function useBridge() {
         error: errorMessage,
         result: null,
         isLoading: false,
+        sourceTxHash: undefined,
+        receiveTxHash: undefined,
       });
     }
   }, [address, isConnected, chainId, switchChain]);

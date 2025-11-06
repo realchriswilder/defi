@@ -344,9 +344,19 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
 
   // Confetti effect - only trigger when receive message transaction is confirmed
   // This means the bridge is fully complete, not just when source transaction is done
+  // Only show confetti if transaction is successful (not rejected/cancelled)
   useEffect(() => {
-    // Only trigger confetti when we have a receiveTxHash (receive message is confirmed)
-    if (state.step === 'success' && state.receiveTxHash) {
+    // Only trigger confetti when:
+    // 1. State is success (not error)
+    // 2. We have a receiveTxHash (receive message is confirmed)
+    // 3. We're not in error state
+    // 4. Ensure we're not in a loading state (shouldn't happen but defensive)
+    if (
+      state.step === 'success' && 
+      state.receiveTxHash && 
+      !state.error &&
+      !state.isLoading
+    ) {
       // Trigger confetti animation
       const duration = 3000;
       const animationEnd = Date.now() + duration;
@@ -382,7 +392,7 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
       // Cleanup
       return () => clearInterval(interval);
     }
-  }, [state.step, state.receiveTxHash]);
+  }, [state.step, state.receiveTxHash, state.error, state.isLoading]);
 
   const handleBridge = async () => {
     await bridge(selectedToken, amount, direction);
