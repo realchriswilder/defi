@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS swap_events (
   amount_out TEXT NOT NULL, -- Store as string to handle bigint
   block_number TEXT NOT NULL,
   timestamp TIMESTAMPTZ NOT NULL,
+  sender_address TEXT, -- Address of the trader who initiated the swap
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -21,9 +22,12 @@ CREATE INDEX IF NOT EXISTS idx_swap_events_timestamp ON swap_events(timestamp DE
 CREATE INDEX IF NOT EXISTS idx_swap_events_tx_hash ON swap_events(tx_hash);
 CREATE INDEX IF NOT EXISTS idx_swap_events_token_in ON swap_events(token_in);
 CREATE INDEX IF NOT EXISTS idx_swap_events_token_out ON swap_events(token_out);
+CREATE INDEX IF NOT EXISTS idx_swap_events_sender_address ON swap_events(sender_address);
 -- Composite index for timestamp filtering (most common query pattern)
 CREATE INDEX IF NOT EXISTS idx_swap_events_timestamp_token_in ON swap_events(timestamp DESC, token_in);
 CREATE INDEX IF NOT EXISTS idx_swap_events_timestamp_token_out ON swap_events(timestamp DESC, token_out);
+-- Composite index for user swap history queries
+CREATE INDEX IF NOT EXISTS idx_swap_events_sender_timestamp ON swap_events(sender_address, timestamp DESC);
 
 -- Function to update last_updated timestamp (for pools table)
 CREATE OR REPLACE FUNCTION update_last_updated_column()

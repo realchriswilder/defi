@@ -137,14 +137,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             symbol: 'USDC',
           },
           rpcUrls: {
-            default: { http: ['https://rpc.testnet.arc.network'] },
-            public: { http: ['https://rpc.testnet.arc.network'] },
+            default: { http: ['https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N'] },
+            public: { http: ['https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N'] },
           },
           blockExplorers: {
             default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
           },
         },
-        transport: http('https://rpc.testnet.arc.network', {
+        transport: http('https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N', {
           retryCount: 2,
           timeout: 8000,
         }),
@@ -227,14 +227,14 @@ export default function BridgeModal({ isOpen = true, onClose, asPage = false }: 
             symbol: 'USDC',
           },
           rpcUrls: {
-            default: { http: ['https://rpc.testnet.arc.network'] },
-            public: { http: ['https://rpc.testnet.arc.network'] },
+            default: { http: ['https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N'] },
+            public: { http: ['https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N'] },
           },
           blockExplorers: {
             default: { name: 'Arc Explorer', url: 'https://testnet.arcscan.app' },
           },
         },
-        transport: http('https://rpc.testnet.arc.network', {
+        transport: http('https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N', {
           retryCount: 2,
           timeout: 8000,
         }),

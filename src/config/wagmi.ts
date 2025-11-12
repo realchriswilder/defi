@@ -1,8 +1,8 @@
 import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { sepolia } from 'viem/chains';
 
-// Use official Arc Testnet RPC endpoint
-const ARC_RPC_URL = 'https://rpc.testnet.arc.network';
+// Use Alchemy Arc Testnet RPC endpoint for better rate limits
+const ARC_RPC_URL = 'https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N';
 
 // Arc Testnet configuration
 // Note: MetaMask validation requires 18 decimals for nativeCurrency

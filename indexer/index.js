@@ -274,6 +274,9 @@ async function processSwapEvents(poolAddress, fromBlock, toBlock) {
       const block = await httpClient.getBlock({ blockNumber: log.blockNumber });
       const timestamp = Number(block.timestamp) * 1000;
 
+      // Get sender address from event (first indexed parameter)
+      const sender = args.sender || null;
+
       events.push({
         poolAddress,
         tokenIn,
@@ -283,6 +286,7 @@ async function processSwapEvents(poolAddress, fromBlock, toBlock) {
         timestamp,
         txHash: log.transactionHash,
         blockNumber: log.blockNumber,
+        sender: sender ? sender.toLowerCase() : null,
       });
     }
 
@@ -439,6 +443,7 @@ async function storeSwapEvents(events, pools) {
         amount_out: event.amountOut.toString(),
         block_number: event.blockNumber.toString(),
         timestamp: new Date(event.timestamp).toISOString(),
+        sender_address: event.sender || null,
       }, {
         onConflict: 'tx_hash',
       });

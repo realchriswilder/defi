@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, X, ChevronLeft } from 'lucide-react';
-import { useAccount, usePublicClient } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { formatUnits, type Address } from 'viem';
 import { TOKENS } from '../hooks/useDEX';
 import TokenLogo from './TokenLogo';
@@ -21,7 +21,6 @@ export default function ActivityTab() {
   const [swapEvents, setSwapEvents] = useState<SwapEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { address, isConnected, chainId } = useAccount();
-  const publicClient = usePublicClient();
   const isArcTestnet = chainId === 5042002;
 
   // Supabase configuration
@@ -38,9 +37,10 @@ export default function ActivityTab() {
     const fetchSwapEvents = async () => {
       setIsLoading(true);
       try {
-        // Fetch all swap events (no date filter, limit 100 to show more history)
+        // Query swap events directly by sender_address - no RPC calls needed!
+        const addressLower = address.toLowerCase();
         const response = await fetch(
-          `${supabaseUrl}/rest/v1/swap_events?select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.desc&limit=100`,
+          `${supabaseUrl}/rest/v1/swap_events?sender_address=eq.${addressLower}&select=tx_hash,pool_address,token_in,token_out,amount_in,amount_out,timestamp&order=timestamp.desc&limit=1000`,
           {
             headers: {
               'apikey': supabaseKey,
@@ -51,36 +51,7 @@ export default function ActivityTab() {
 
         if (response.ok) {
           const events = await response.json();
-          
-          // Filter events by checking if the transaction was from this user
-          // Check transaction receipts to verify ownership
-          if (publicClient && address) {
-            const userSwaps: SwapEvent[] = [];
-            
-            // Check all events (up to 100) to show complete history
-            const eventsToCheck = events;
-            
-            for (const event of eventsToCheck) {
-              try {
-                const receipt = await publicClient.getTransactionReceipt({
-                  hash: event.tx_hash as `0x${string}`,
-                });
-                
-                // Check if transaction was from this user
-                if (receipt.from.toLowerCase() === address.toLowerCase()) {
-                  userSwaps.push(event);
-                }
-              } catch {
-                // If we can't get receipt, skip this event
-                continue;
-              }
-            }
-            
-            setSwapEvents(userSwaps);
-          } else {
-            // If no public client, show all swaps (fallback)
-            setSwapEvents(events);
-          }
+          setSwapEvents(events);
         }
       } catch (error) {
         console.error('Error fetching swap events:', error);

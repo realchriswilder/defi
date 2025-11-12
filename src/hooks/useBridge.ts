@@ -66,8 +66,8 @@ export const ARC_CHAIN_ID = 5042002;
 
 // RPC URLs for balance fetching
 const ARC_RPC_URLS = [
-  'https://rpc.testnet.arc.network/',
-  'https://rpc.testnet.arc.network',
+  'https://arc-testnet.g.alchemy.com/v2/Gwa0xpQWE3hHxyKllpxbGQmkRLNhV51N',
+  'https://rpc.testnet.arc.network', // Fallback
 ];
 
 export function useBridge() {

@@ -10,6 +10,7 @@ import Swap from './components/Swap';
 import Pools from './components/Pools';
 import CreatePool from './components/CreatePool';
 import MaintenancePage from './components/MaintenancePage';
+import XFollowFAB from './components/XFollowFAB';
 import { ArrowLeftRight, Home } from 'lucide-react';
 import '@rainbow-me/rainbowkit/styles.css';
 
@@ -30,65 +31,70 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<TabType>('bridge');
   const [showLandingPage, setShowLandingPage] = useState(true);
 
-  if (showLandingPage) {
-    return <LandingPage onGetStarted={() => setShowLandingPage(false)} />;
-  }
-
   return (
-    <div className="min-h-screen bg-orange-50 flex items-start justify-center p-3 sm:p-4 md:p-8">
-      <div className="w-full max-w-5xl mt-4 sm:mt-6 md:mt-8">
-        {/* Header with Wallet Connect */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setShowLandingPage(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition-all shadow-sm"
-              title="Back to Home"
-            >
-              <Home className="w-5 h-5 text-gray-600" />
-              <span className="text-sm font-medium text-gray-700 hidden sm:inline">Home</span>
-            </button>
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-                DeFi On ARC
-              </h1>
-              <p className="text-gray-600 text-xs md:text-sm">
-                Bridge, Swap, and Manage Liquidity
-              </p>
+    <>
+      {showLandingPage ? (
+        <LandingPage onGetStarted={() => setShowLandingPage(false)} />
+      ) : (
+        <div className="min-h-screen bg-orange-50 flex items-start justify-center p-3 sm:p-4 md:p-8">
+          <div className="w-full max-w-5xl mt-4 sm:mt-6 md:mt-8">
+            {/* Header with Wallet Connect */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowLandingPage(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 hover:bg-gray-50 transition-all shadow-sm"
+                  title="Back to Home"
+                >
+                  <Home className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-700 hidden sm:inline">Home</span>
+                </button>
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+                    DeFi On ARC
+                  </h1>
+                  <p className="text-gray-600 text-xs md:text-sm">
+                    Bridge, Swap, and Manage Liquidity
+                  </p>
+                </div>
+              </div>
+              <div className="bg-white rounded-2xl p-2 border border-gray-200 shadow-lg self-start md:self-auto">
+              <ConnectButton
+                showBalance={true}
+                chainStatus="icon"
+                accountStatus={{
+                  smallScreen: 'avatar',
+                  largeScreen: 'full',
+                }}
+              />
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+
+            {/* Content Area */}
+            <div className="mt-6">
+              {activeTab === 'bridge' && (
+                <BridgeModal asPage={true} />
+              )}
+
+              {activeTab === 'swap' && <Swap />}
+              {activeTab === 'pools' && <Pools />}
+              {activeTab === 'create-pool' && <CreatePool />}
             </div>
           </div>
-          <div className="bg-white rounded-2xl p-2 border border-gray-200 shadow-lg self-start md:self-auto">
-          <ConnectButton
-            showBalance={true}
-            chainStatus="icon"
-            accountStatus={{
-              smallScreen: 'avatar',
-              largeScreen: 'full',
-            }}
+
+          <BridgeModal
+            isOpen={isBridgeModalOpen}
+            onClose={() => setIsBridgeModalOpen(false)}
           />
-          </div>
+
+          {/* X Follow FAB */}
+          <XFollowFAB />
         </div>
-
-        {/* Navigation Tabs */}
-        <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-
-        {/* Content Area */}
-        <div className="mt-6">
-          {activeTab === 'bridge' && (
-            <BridgeModal asPage={true} />
-          )}
-
-          {activeTab === 'swap' && <Swap />}
-          {activeTab === 'pools' && <Pools />}
-          {activeTab === 'create-pool' && <CreatePool />}
-        </div>
-      </div>
-
-      <BridgeModal
-        isOpen={isBridgeModalOpen}
-        onClose={() => setIsBridgeModalOpen(false)}
-      />
-    </div>
+      )}
+    </>
   );
 }
 
