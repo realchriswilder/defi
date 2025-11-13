@@ -1,139 +1,410 @@
-# Bridge Kit App
+# DeFi on Arc - Complete DEX & Bridge Platform
 
-A React application for bridging USDC bidirectionally between Ethereum Sepolia and Arc Testnet using Circle Bridge Kit.
+A full-featured DeFi application built on Arc Testnet featuring token swapping, liquidity provision, and cross-chain bridging between Ethereum Sepolia and Arc Testnet.
 
-## Getting Started
+## 🚀 Features
 
-1. Install dependencies:
+### Token Swapping
+- **Instant Swaps**: Swap tokens instantly using AMM pools
+- **Real-time Price Charts**: Interactive price charts with 1H, 1D, 1W, 1M timeframes
+- **Swap Activity Feed**: Live swap history for each token pair
+- **Buy/Sell Indicators**: Visual tags showing swap direction
+- **Token Logos**: Beautiful token logos throughout the UI
+
+### Liquidity Provision
+- **Add Liquidity**: Provide liquidity to any token pair
+- **Remove Liquidity**: Withdraw your liquidity at any time
+- **LP Token Tracking**: Track your liquidity positions
+- **Pool Creation**: Create new pools for any token pair
+
+### Cross-Chain Bridging
+- **Bidirectional Bridging**: Bridge USDC from Sepolia ↔ Arc Testnet
+- **Automatic Chain Switching**: Seamless chain transitions
+- **Progress Tracking**: Real-time bridge status updates
+- **Confetti Animation**: Celebration on successful bridge
+- **Transaction Links**: Direct links to block explorers
+
+### Analytics & Data
+- **Pool Analytics**: TVL, volume, and fees tracking
+- **Price History**: Historical price data for all pairs
+- **Swap History**: Individual account swap history
+- **Real-time Updates**: Auto-refresh every 5 minutes
+
+## 📁 Project Structure
+
+```
+my-bridge-app/
+├── src/                          # Frontend React application
+│   ├── components/              # React components
+│   │   ├── ActivityTab.tsx     # User swap history
+│   │   ├── AddLiquidityModal.tsx
+│   │   ├── BridgeModal.tsx      # Cross-chain bridge UI
+│   │   ├── CreatePool.tsx       # Pool creation interface
+│   │   ├── LandingPage.tsx      # Landing page
+│   │   ├── Liquidity.tsx        # Liquidity management
+│   │   ├── Navigation.tsx      # App navigation
+│   │   ├── Pools.tsx            # Pool listings & analytics
+│   │   ├── PriceChart.tsx       # Price chart component
+│   │   ├── RemoveLiquidityModal.tsx
+│   │   ├── Swap.tsx             # Main swap interface
+│   │   ├── SwapActivity.tsx     # Swap activity feed
+│   │   ├── SwapSuccessModal.tsx
+│   │   ├── TokenLogo.tsx        # Token logo component
+│   │   └── XFollowFAB.tsx       # Social media FAB
+│   ├── config/                  # Configuration files
+│   │   ├── abis.ts              # Contract ABIs
+│   │   ├── dex.ts               # DEX configuration
+│   │   └── wagmi.ts             # Wagmi/RainbowKit config
+│   ├── hooks/                    # Custom React hooks
+│   │   ├── useBridge.ts         # Bridge functionality
+│   │   ├── useDEX.ts            # DEX interactions
+│   │   └── usePriceHistory.ts   # Price history fetching
+│   ├── utils/                    # Utility functions
+│   │   ├── addArcTestnet.ts     # Arc Testnet config
+│   │   └── tokenLogos.ts        # Token logo mappings
+│   ├── App.tsx                   # Main app component
+│   ├── main.tsx                  # App entry point
+│   └── index.css                 # Global styles
+│
+├── contracts/                    # Smart contracts (Solidity)
+│   ├── contracts/               # Solidity source files
+│   │   ├── MockERC20.sol        # Test token contract
+│   │   ├── PoolFactory.sol      # Factory for creating pools
+│   │   └── SimplePoolWithLP.sol # Liquidity pool contract
+│   ├── scripts/                  # Deployment scripts
+│   │   ├── deploy.ts            # Deploy contracts
+│   │   ├── addInitialLiquidity.ts
+│   │   └── recoverLiquidity.ts
+│   ├── artifacts/               # Compiled contracts
+│   ├── typechain-types/         # TypeScript types
+│   ├── hardhat.config.ts        # Hardhat configuration
+│   ├── package.json             # Contract dependencies
+│   └── DEPLOYMENT_ADDRESSES.txt  # Deployed contract addresses
+│
+├── indexer/                      # Backend indexer service
+│   ├── index.js                 # Main indexer script
+│   ├── package.json             # Indexer dependencies
+│   ├── railway.json             # Railway deployment config
+│   └── nixpacks.toml            # Nixpacks config
+│
+├── public/                       # Static assets
+│   ├── favicon.ico
+│   └── *.png, *.svg             # Token logos
+│
+├── scripts/                      # Utility scripts
+│   └── validate-liquidity.js
+│
+├── supabase-schema.sql          # Database schema
+├── supabase-migration-add-sender-address.sql
+├── INDEXER_SETUP.md             # Indexer setup guide
+├── SECURITY_ANALYSIS.md         # Security documentation
+├── package.json                 # Frontend dependencies
+├── vite.config.ts               # Vite configuration
+├── tailwind.config.js           # Tailwind CSS config
+└── tsconfig.json                # TypeScript config
+```
+
+## 🛠️ Getting Started
+
+### Prerequisites
+
+- Node.js 18+
+- MetaMask or compatible wallet
+- USDC on Ethereum Sepolia or Arc Testnet (for bridging)
+- Supabase account (for indexer)
+
+### Installation
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/realchriswilder/defi.git
+cd my-bridge-app
+```
+
+2. **Install frontend dependencies**
 ```bash
 npm install
 ```
 
-2. Start the development server:
+3. **Set up environment variables**
+```bash
+# Create .env file in root
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+4. **Start development server**
 ```bash
 npm run dev
 ```
 
-3. Open [http://localhost:5173](http://localhost:5173) in your browser
+5. **Open the app**
+Navigate to [http://localhost:5173](http://localhost:5173)
 
-## Features
+## 🔧 Smart Contracts Setup
 
-- **Bidirectional Bridging**: Bridge USDC from Sepolia ↔ Arc Testnet in either direction
-- **Automatic Balance Fetching**: Fetches USDC balance from the source chain
-- **Chain Switching Automation**: Automatically switches chains during bridge process
-- **Visual Chain Swapping**: Click the swap button to toggle bridge direction
-- **Progress Tracking**: Timer and status updates during bridge process
-- **Confetti Animation**: Celebration animation on successful bridge
-- **Beautiful UI**: Modern UI with chain icons and smooth animations
-- **Error Handling**: Comprehensive error messages and user guidance
-- **Transaction Links**: Direct links to view transactions on block explorers
+### Contracts Overview
 
-## Project Structure
+- **MockERC20.sol**: Test tokens with 18 decimals
+- **SimplePoolWithLP.sol**: Liquidity pool with LP tokens
+- **PoolFactory.sol**: Factory to create multiple pools
 
-```
-src/
-├── components/
-│   └── BridgeModal.tsx      # Main bridge modal component
-├── hooks/
-│   └── useBridge.ts         # Core bridging logic hook
-├── config/
-│   └── wagmi.ts            # Wagmi configuration
-├── App.tsx                 # Main app component
-└── main.tsx                # App entry point
+### Deploy Contracts
+
+1. **Navigate to contracts directory**
+```bash
+cd contracts
+npm install
 ```
 
-## Usage
-
-The `BridgeModal` component is already integrated in `App.tsx`. Simply click the "Bridge USDC" button to start bridging.
-
-### Custom Integration
-
-```tsx
-import BridgeModal from './components/BridgeModal';
-import { useState } from 'react';
-
-function MyApp() {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  return (
-    <>
-      <button onClick={() => setIsOpen(true)}>Bridge USDC</button>
-      <BridgeModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
-    </>
-  );
-}
+2. **Configure environment**
+```bash
+cp .env.example .env
+# Edit .env and add your PRIVATE_KEY
 ```
 
-### Using the Bridge Hook Directly
+3. **Compile contracts**
+```bash
+npm run compile
+```
 
-You can also use the `useBridge` hook directly for more control:
+4. **Deploy to Arc Testnet**
+```bash
+npm run deploy:arc
+```
+
+5. **Add initial liquidity** (optional)
+```bash
+# Update addresses in scripts/addInitialLiquidity.ts
+npm run add-liquidity
+```
+
+### Contract Math
+
+The DEX uses the **Constant Product Formula** (x * y = k):
+
+- **Swap**: `(reserveB * amountIn * (1 - fee)) / (reserveA + amountIn * (1 - fee))`
+- **Add Liquidity**: LP tokens = `sqrt(amountA * amountB)`
+- **Remove Liquidity**: Proportional to LP token share
+
+### Deployment Addresses
+
+Deployed contract addresses are stored in `contracts/DEPLOYMENT_ADDRESSES.txt`.
+
+**Factory Address**: `0x34A0b64a88BBd4Bf6Acba8a0Ff8F27c8aDD67E9C`
+
+## 📊 Indexer Setup
+
+The indexer listens to blockchain events and stores swap data in Supabase for analytics.
+
+### Railway Deployment (Recommended)
+
+1. **Create a new Railway service** (separate from frontend)
+2. **Set Root Directory** to `/indexer`
+3. **Set Service Type** to "Worker" (NOT "Web Service")
+4. **Add Environment Variables**:
+   - `WSS_URL` = `wss://rpc.testnet.arc.network`
+   - `HTTP_RPC_URL` = `https://arc-testnet.g.alchemy.com/v2/API KEY HERE
+   - `SUPABASE_URL` = Your Supabase project URL
+   - `SUPABASE_ANON_KEY` = Your Supabase anon key
+
+### Local Development
+
+```bash
+cd indexer
+npm install
+npm start
+```
+
+### Database Setup
+
+1. **Run Supabase schema**
+   - Execute `supabase-schema.sql` in Supabase SQL Editor
+   - Creates `swap_events`, `pools`, `price_history` tables
+
+2. **Run migration** (if needed)
+   - Execute `supabase-migration-add-sender-address.sql` to add `sender_address` column
+
+### What the Indexer Does
+
+- Polls every 10 seconds
+- Tracks all pools from the factory
+- Listens for Swap events
+- Stores raw swap events in Supabase
+- Updates pool reserves from on-chain data
+- Calculates volume and fees
+
+## 🌉 Bridge Setup
+
+### Manual Arc Testnet Configuration
+
+Add Arc Testnet to MetaMask:
+
+- **Network Name**: Arc Testnet
+- **RPC URL**: `https://arc-testnet.g.alchemy.com/v2/API KEY HERE`
+- **Chain ID**: `5042002`
+- **Currency Symbol**: `USDC`
+- **Block Explorer**: `https://testnet.arcscan.app`
+- **Decimals**: `6`
+
+### Bridge Flow
+
+1. **Select Direction**: Choose Sepolia → Arc or Arc → Sepolia
+2. **Enter Amount**: Input USDC amount to bridge
+3. **Approve**: Approve token spending
+4. **Transfer**: Confirm transfer transaction
+5. **Auto Switch**: Bridge Kit automatically switches chains
+6. **Receive**: Confirm receive message transaction
+7. **Success**: Confetti animation and transaction links!
+
+### Token Addresses
+
+- **Sepolia USDC**: `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`
+- **Arc Testnet USDC**: `0x3600000000000000000000000000000000000000`
+
+### Get Testnet USDC
+
+- **Sepolia**: [Circle Faucet](https://faucet.circle.com/)
+- **Arc Testnet**: Arc Testnet Faucet
+
+## 🎨 Tech Stack
+
+### Frontend
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool
+- **Tailwind CSS** - Styling
+- **Framer Motion** - Animations
+- **Wagmi** - Ethereum interactions
+- **RainbowKit** - Wallet connection
+- **Lightweight Charts** - Price charts
+- **Recharts** - Analytics charts
+
+### Blockchain
+- **Viem** - Ethereum library
+- **Circle Bridge Kit** - Cross-chain bridging
+- **Hardhat** - Smart contract development
+- **Solidity** - Smart contract language
+
+### Backend
+- **Supabase** - Database & API
+- **Node.js** - Indexer runtime
+- **Railway** - Indexer hosting
+
+## 📡 RPC Endpoints
+
+### Primary (Alchemy)
+- **HTTP**: `https://arc-testnet.g.alchemy.com/v2/API KEY HERE
+- **WebSocket**: `wss://rpc.testnet.arc.network` (for indexer)
+
+### Fallback
+- **HTTP**: `https://rpc.testnet.arc.network`
+
+## 🔐 Environment Variables
+
+### Frontend (.env)
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+### Indexer (Railway/Environment)
+```env
+WSS_URL=wss://rpc.testnet.arc.network
+HTTP_RPC_URL=https://arc-testnet.g.alchemy.com/v2/API KEY HERE
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+### Contracts (.env in contracts/)
+```env
+PRIVATE_KEY=your_private_key
+ARC_RPC_URL=https://arc-testnet.g.alchemy.com/v2/API KEY HERE 
+```
+
+## 📝 Usage Examples
+
+### Using the Bridge Hook
 
 ```tsx
 import { useBridge } from './hooks/useBridge';
 
-function MyCustomComponent() {
+function MyComponent() {
   const { state, tokenBalance, bridge, fetchTokenBalance } = useBridge();
   
   const handleBridge = async () => {
     // Bridge from Sepolia to Arc
     await bridge('USDC', '10', 'sepolia-to-arc');
-    
-    // Or bridge from Arc to Sepolia
-    // await bridge('USDC', '10', 'arc-to-sepolia');
   };
   
   return (
     <div>
       <p>Balance: {tokenBalance} USDC</p>
       <button onClick={handleBridge}>Bridge</button>
-      {state.step === 'success' && <p>Bridge successful!</p>}
     </div>
   );
 }
 ```
 
-## Requirements
+### Using the DEX Hook
 
-- MetaMask or compatible wallet
-- USDC on Ethereum Sepolia or Arc Testnet (depending on bridge direction)
-- Node.js 18+
+```tsx
+import { useDEX } from './hooks/useDEX';
 
-### Manual Arc Testnet Setup
+function SwapComponent() {
+  const { swap, addLiquidity, pools } = useDEX();
+  
+  const handleSwap = async () => {
+    await swap(
+      '0x...', // tokenIn
+      '0x...', // tokenOut
+      '1000000000000000000', // amountIn (in wei)
+      '0' // minAmountOut
+    );
+  };
+  
+  return <button onClick={handleSwap}>Swap</button>;
+}
+```
 
-**Important**: Arc Testnet must be manually added to your wallet before using the bridge.
+## 🚢 Deployment
 
-Add Arc Testnet to MetaMask with these details:
-- **Network Name**: Arc Testnet
-- **RPC URL**: `https://rpc.testnet.arc.network`
-- **Chain ID**: `5042002`
-- **Currency Symbol**: `USDC`
-- **Block Explorer**: `https://testnet.arcscan.app`
-- **Decimals**: `6` (USDC uses 6 decimals)
+### Frontend (Vercel/Netlify)
 
-## How It Works
+```bash
+npm run build
+# Deploy dist/ folder
+```
 
-1. **Select Direction**: Choose to bridge from Sepolia → Arc or Arc → Sepolia using the swap button
-2. **Enter Amount**: Input the amount of USDC you want to bridge
-3. **Approve Transactions**: Approve the token approval and transfer transactions
-4. **Automatic Chain Switch**: The bridge automatically switches to the destination chain
-5. **Confirm Receive**: Approve the receive message transaction on the destination chain
-6. **Celebrate**: Confetti animation and success message with transaction links!
+### Indexer (Railway)
 
-## Get USDC
+1. Connect GitHub repository
+2. Set root directory to `/indexer`
+3. Set service type to "Worker"
+4. Add environment variables
+5. Deploy
 
-Get testnet USDC from the [Circle Faucet](https://faucet.circle.com/) for Sepolia, or use the Arc Testnet faucet for Arc USDC.
+## 📚 Additional Documentation
 
-## Supported Chains
+- **INDEXER_SETUP.md** - Detailed indexer setup guide
+- **SECURITY_ANALYSIS.md** - Security considerations
+- **contracts/CUSTOM_DEX_EXPLANATION.md** - DEX math explanation
+- **contracts/CustomDEX_Guide.md** - Custom DEX guide
 
-- **Ethereum Sepolia** (Chain ID: 11155111)
-- **Arc Testnet** (Chain ID: 5042002)
+## 🤝 Contributing
 
-## Token Addresses
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-- **Sepolia USDC**: `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`
-- **Arc Testnet USDC**: `0x3600000000000000000000000000000000000000`
-
-## License
+## 📄 License
 
 MIT
 
+## 🔗 Links
+
+- **GitHub**: [https://github.com/realchriswilder/defi](https://github.com/realchriswilder/defi)
+- **Arc Explorer**: [https://testnet.arcscan.app](https://testnet.arcscan.app)
+- **Circle Bridge Kit**: [https://developers.circle.com/](https://developers.circle.com/)
+
+---
+
+Built with ❤️ on Arc Testnet
